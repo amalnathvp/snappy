@@ -37,10 +37,10 @@ interface ScreenshotDao {
 
     @Query("""
         SELECT appName, COUNT(*) as count, 
-        (SELECT imageUri FROM screenshots s2 WHERE s2.appName = s1.appName ORDER BY s2.dateTaken DESC LIMIT 1) as latestUri
+        (SELECT imageUri FROM screenshots s2 WHERE s2.appName = s1.appName ORDER BY s2.dateTaken DESC LIMIT 1) as latestUri,
+        (SELECT MAX(dateTaken) FROM screenshots s3 WHERE s3.appName = s1.appName) as maxDate
         FROM screenshots s1 
-        GROUP BY appName 
-        ORDER BY count DESC, appName ASC
+        GROUP BY appName
     """)
     fun getCollectionsFlow(): Flow<List<CollectionInfoEntity>>
 
@@ -55,6 +55,9 @@ interface ScreenshotDao {
 
     @Query("SELECT imageUri FROM screenshots WHERE favorite = 1 ORDER BY dateTaken DESC LIMIT 1")
     fun getLatestFavoriteUriFlow(): Flow<String?>
+
+    @Query("SELECT imageUri FROM screenshots ORDER BY dateTaken DESC LIMIT 1")
+    fun getLatestScreenshotUriFlow(): Flow<String?>
     
     @Query("DELETE FROM screenshots")
     suspend fun clearAll()
@@ -85,10 +88,10 @@ interface ScreenshotDao {
 
     @Query("""
         SELECT collectionName as appName, COUNT(*) as count,
-        (SELECT imageUri FROM screenshots s2 INNER JOIN screenshot_custom_collection j2 ON s2.id = j2.screenshotId WHERE j2.collectionName = j.collectionName ORDER BY s2.dateTaken DESC LIMIT 1) as latestUri
+        (SELECT imageUri FROM screenshots s2 INNER JOIN screenshot_custom_collection j2 ON s2.id = j2.screenshotId WHERE j2.collectionName = j.collectionName ORDER BY s2.dateTaken DESC LIMIT 1) as latestUri,
+        (SELECT MAX(s3.dateTaken) FROM screenshots s3 INNER JOIN screenshot_custom_collection j3 ON s3.id = j3.screenshotId WHERE j3.collectionName = j.collectionName) as maxDate
         FROM screenshot_custom_collection j
         GROUP BY collectionName
-        ORDER BY count DESC, collectionName ASC
     """)
     fun getCustomCollectionsFlow(): Flow<List<CollectionInfoEntity>>
 
@@ -104,5 +107,6 @@ interface ScreenshotDao {
 data class CollectionInfoEntity(
     val appName: String,
     val count: Int,
-    val latestUri: String?
+    val latestUri: String?,
+    val maxDate: Long?
 )

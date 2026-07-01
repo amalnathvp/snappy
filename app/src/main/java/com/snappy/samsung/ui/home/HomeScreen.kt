@@ -7,12 +7,19 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.Clear
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.text.input.ImeAction
+import com.snappy.samsung.viewmodel.HomeSortMode
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -39,8 +46,12 @@ fun HomeScreen(
     modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.collectionsState.collectAsState()
+    val searchQuery by viewModel.searchQuery.collectAsState()
+    val sortMode by viewModel.sortMode.collectAsState()
+    
     var showCreateDialog by remember { mutableStateOf(false) }
     var newCollectionName by remember { mutableStateOf("") }
+    val keyboardController = LocalSoftwareKeyboardController.current
 
     Scaffold(
         topBar = {
@@ -83,29 +94,101 @@ fun HomeScreen(
         },
         modifier = modifier
     ) { paddingValues ->
-        Box(
+        Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
                 .background(MaterialTheme.colorScheme.background)
         ) {
-            when (val state = uiState) {
-                is HomeUiState.Loading -> {
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+            // Search Input Row
+            OutlinedTextField(
+                value = searchQuery,
+                onValueChange = { viewModel.setSearchQuery(it) },
+                placeholder = { Text("Search collections…") },
+                leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null) },
+                trailingIcon = {
+                    if (searchQuery.isNotEmpty()) {
+                        IconButton(onClick = { viewModel.setSearchQuery("") }) {
+                            Icon(Icons.Rounded.Clear, contentDescription = "Clear")
+                        }
                     }
-                }
-                is HomeUiState.Success -> {
-                    if (state.appCollections.isEmpty() && state.favorites == null && state.customCollections.isEmpty()) {
-                        EmptyState(onScanClick = { viewModel.scanScreenshots() })
-                    } else {
-                        CollectionsGrid(
-                            favorites = state.favorites,
-                            collections = state.appCollections,
-                            customCollections = state.customCollections,
-                            onCollectionClick = onCollectionClick,
-                            onCreateCollectionClick = { showCreateDialog = true }
-                        )
+                },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                keyboardActions = KeyboardActions(onSearch = { keyboardController?.hide() }),
+                shape = RoundedCornerShape(16.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedContainerColor = MaterialTheme.colorScheme.surface,
+                    unfocusedContainerColor = MaterialTheme.colorScheme.surface,
+                    focusedBorderColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
+                    unfocusedBorderColor = Color.Transparent
+                ),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp)
+            )
+
+            // Sorting Controls Row
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                FilterChip(
+                    selected = sortMode == HomeSortMode.BY_DATE,
+                    onClick = { viewModel.setSortMode(HomeSortMode.BY_DATE) },
+                    label = { Text("Recent Date") },
+                    shape = RoundedCornerShape(10.dp)
+                )
+                FilterChip(
+                    selected = sortMode == HomeSortMode.BY_COUNT,
+                    onClick = { viewModel.setSortMode(HomeSortMode.BY_COUNT) },
+                    label = { Text("Photos Count") },
+                    shape = RoundedCornerShape(10.dp)
+                )
+                FilterChip(
+                    selected = sortMode == HomeSortMode.BY_NAME,
+                    onClick = { viewModel.setSortMode(HomeSortMode.BY_NAME) },
+                    label = { Text("A-Z") },
+                    shape = RoundedCornerShape(10.dp)
+                )
+            }
+
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+            ) {
+                when (val state = uiState) {
+                    is HomeUiState.Loading -> {
+                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+                        }
+                    }
+                    is HomeUiState.Success -> {
+                        if (state.appCollections.isEmpty() && state.favorites == null && state.allScreenshots == null && state.customCollections.isEmpty()) {
+                            if (searchQuery.isNotEmpty()) {
+                                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                    Text(
+                                        text = "No matching folders found",
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            } else {
+                                EmptyState(onScanClick = { viewModel.scanScreenshots() })
+                            }
+                        } else {
+                            CollectionsGrid(
+                                favorites = state.favorites,
+                                allScreenshots = state.allScreenshots,
+                                collections = state.appCollections,
+                                customCollections = state.customCollections,
+                                onCollectionClick = onCollectionClick,
+                                onCreateCollectionClick = { showCreateDialog = true }
+                            )
+                        }
                     }
                 }
             }
@@ -158,6 +241,7 @@ fun HomeScreen(
 @Composable
 fun CollectionsGrid(
     favorites: CollectionInfo?,
+    allScreenshots: CollectionInfo?,
     collections: List<CollectionInfo>,
     customCollections: List<CollectionInfo>,
     onCollectionClick: (String) -> Unit,
@@ -171,12 +255,33 @@ fun CollectionsGrid(
         verticalArrangement = Arrangement.spacedBy(16.dp),
         modifier = modifier.fillMaxSize()
     ) {
-        if (favorites != null) {
+        if (favorites != null || allScreenshots != null) {
             item(span = { GridItemSpan(maxLineSpan) }) {
-                FavoritesCollectionCard(
-                    collection = favorites,
-                    onClick = { onCollectionClick("Favorites") }
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    if (favorites != null) {
+                        QuickAccessCard(
+                            collection = favorites,
+                            title = "Favorites",
+                            icon = Icons.Rounded.Favorite,
+                            iconColor = Color.Red,
+                            onClick = { onCollectionClick("Favorites") },
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                    if (allScreenshots != null) {
+                        QuickAccessCard(
+                            collection = allScreenshots,
+                            title = "All Screenshots",
+                            icon = Icons.Rounded.Folder,
+                            iconColor = MaterialTheme.colorScheme.primary,
+                            onClick = { onCollectionClick("All") },
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                }
             }
         }
 
@@ -198,25 +303,30 @@ fun CollectionsGrid(
         }
 
         item(span = { GridItemSpan(maxLineSpan) }) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 16.dp, bottom = 4.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "Custom Collections",
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary
-                )
-                IconButton(onClick = onCreateCollectionClick) {
-                    Icon(
-                        imageVector = Icons.Rounded.Add,
-                        contentDescription = "Create Custom Collection",
-                        tint = MaterialTheme.colorScheme.primary
+            Column {
+                Spacer(modifier = Modifier.height(12.dp))
+                HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f))
+                Spacer(modifier = Modifier.height(12.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 4.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Custom Collections",
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
                     )
+                    IconButton(onClick = onCreateCollectionClick) {
+                        Icon(
+                            imageVector = Icons.Rounded.Add,
+                            contentDescription = "Create Custom Collection",
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
                 }
             }
         }
@@ -249,21 +359,22 @@ fun CollectionsGrid(
 }
 
 @Composable
-fun FavoritesCollectionCard(
+fun QuickAccessCard(
     collection: CollectionInfo,
+    title: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    iconColor: Color,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Card(
         shape = RoundedCornerShape(24.dp),
         modifier = modifier
-            .fillMaxWidth()
-            .height(160.dp)
+            .height(130.dp)
             .clickable(onClick = onClick),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
-            // Latest screenshot image as background
             if (collection.latestUri != null) {
                 AsyncImage(
                     model = collection.latestUri,
@@ -273,7 +384,6 @@ fun FavoritesCollectionCard(
                 )
             }
 
-            // Dark overlay gradient for text visibility
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -287,47 +397,45 @@ fun FavoritesCollectionCard(
                     )
             )
 
-            // Content overlay
-            Row(
+            Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(20.dp),
-                verticalAlignment = Alignment.Bottom,
-                horizontalArrangement = Arrangement.SpaceBetween
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.Bottom
             ) {
-                Column {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(
-                            modifier = Modifier
-                                .size(36.dp)
-                                .background(
-                                    MaterialTheme.colorScheme.primaryContainer,
-                                    CircleShape
-                                ),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Rounded.Favorite,
-                                contentDescription = null,
-                                tint = Color.Red,
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
-                        Spacer(modifier = Modifier.width(10.dp))
-                        Text(
-                            text = "Favorites",
-                            fontSize = 20.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(28.dp)
+                            .background(
+                                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.8f),
+                                CircleShape
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = icon,
+                            contentDescription = null,
+                            tint = iconColor,
+                            modifier = Modifier.size(16.dp)
                         )
                     }
-                    Spacer(modifier = Modifier.height(4.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = "${collection.count} screenshots",
-                        fontSize = 14.sp,
-                        color = Color.White.copy(alpha = 0.7f)
+                        text = title,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = Color.White,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = "${collection.count} screenshots",
+                    fontSize = 12.sp,
+                    color = Color.White.copy(alpha = 0.7f)
+                )
             }
         }
     }
@@ -371,7 +479,6 @@ fun AppCollectionCard(
                 }
             }
 
-            // Dark overlay gradient
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -385,54 +492,26 @@ fun AppCollectionCard(
                     )
             )
 
-            // Content
             Column(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(14.dp),
-                verticalArrangement = Arrangement.SpaceBetween
+                verticalArrangement = Arrangement.Bottom
             ) {
-                // App Logo Placeholder (Top Left)
-                val avatarColor = remember(collection.appName) {
-                    val colors = listOf(
-                        Color(0xFF38BDF8), Color(0xFF6366F1), Color(0xFFEC4899),
-                        Color(0xFF10B981), Color(0xFFF59E0B), Color(0xFF8B5CF6)
-                    )
-                    colors[Math.abs(collection.appName.hashCode()) % colors.size]
-                }
-                
-                Box(
-                    modifier = Modifier
-                        .size(32.dp)
-                        .background(avatarColor, CircleShape),
-                    contentAlignment = Alignment.Center
-                ) {
-                    val letter = collection.appName.firstOrNull()?.toString() ?: "?"
-                    Text(
-                        text = letter.uppercase(),
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White,
-                        fontSize = 16.sp
-                    )
-                }
-
-                // Text (Bottom)
-                Column {
-                    Text(
-                        text = collection.appName,
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    Spacer(modifier = Modifier.height(2.dp))
-                    Text(
-                        text = "${collection.count} screens",
-                        fontSize = 12.sp,
-                        color = Color.White.copy(alpha = 0.7f)
-                    )
-                }
+                Text(
+                    text = collection.appName,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = "${collection.count} screenshots",
+                    fontSize = 12.sp,
+                    color = Color.White.copy(alpha = 0.7f)
+                )
             }
         }
     }

@@ -656,10 +656,10 @@ public final class ScreenshotDao_Impl implements ScreenshotDao {
   public Flow<List<CollectionInfoEntity>> getCollectionsFlow() {
     final String _sql = "\n"
             + "        SELECT appName, COUNT(*) as count, \n"
-            + "        (SELECT imageUri FROM screenshots s2 WHERE s2.appName = s1.appName ORDER BY s2.dateTaken DESC LIMIT 1) as latestUri\n"
+            + "        (SELECT imageUri FROM screenshots s2 WHERE s2.appName = s1.appName ORDER BY s2.dateTaken DESC LIMIT 1) as latestUri,\n"
+            + "        (SELECT MAX(dateTaken) FROM screenshots s3 WHERE s3.appName = s1.appName) as maxDate\n"
             + "        FROM screenshots s1 \n"
-            + "        GROUP BY appName \n"
-            + "        ORDER BY count DESC, appName ASC\n"
+            + "        GROUP BY appName\n"
             + "    ";
     final RoomSQLiteQuery _statement = RoomSQLiteQuery.acquire(_sql, 0);
     return CoroutinesRoom.createFlow(__db, false, new String[] {"screenshots"}, new Callable<List<CollectionInfoEntity>>() {
@@ -671,6 +671,7 @@ public final class ScreenshotDao_Impl implements ScreenshotDao {
           final int _cursorIndexOfAppName = 0;
           final int _cursorIndexOfCount = 1;
           final int _cursorIndexOfLatestUri = 2;
+          final int _cursorIndexOfMaxDate = 3;
           final List<CollectionInfoEntity> _result = new ArrayList<CollectionInfoEntity>(_cursor.getCount());
           while (_cursor.moveToNext()) {
             final CollectionInfoEntity _item;
@@ -684,7 +685,13 @@ public final class ScreenshotDao_Impl implements ScreenshotDao {
             } else {
               _tmpLatestUri = _cursor.getString(_cursorIndexOfLatestUri);
             }
-            _item = new CollectionInfoEntity(_tmpAppName,_tmpCount,_tmpLatestUri);
+            final Long _tmpMaxDate;
+            if (_cursor.isNull(_cursorIndexOfMaxDate)) {
+              _tmpMaxDate = null;
+            } else {
+              _tmpMaxDate = _cursor.getLong(_cursorIndexOfMaxDate);
+            }
+            _item = new CollectionInfoEntity(_tmpAppName,_tmpCount,_tmpLatestUri,_tmpMaxDate);
             _result.add(_item);
           }
           return _result;
@@ -831,6 +838,39 @@ public final class ScreenshotDao_Impl implements ScreenshotDao {
   }
 
   @Override
+  public Flow<String> getLatestScreenshotUriFlow() {
+    final String _sql = "SELECT imageUri FROM screenshots ORDER BY dateTaken DESC LIMIT 1";
+    final RoomSQLiteQuery _statement = RoomSQLiteQuery.acquire(_sql, 0);
+    return CoroutinesRoom.createFlow(__db, false, new String[] {"screenshots"}, new Callable<String>() {
+      @Override
+      @Nullable
+      public String call() throws Exception {
+        final Cursor _cursor = DBUtil.query(__db, _statement, false, null);
+        try {
+          final String _result;
+          if (_cursor.moveToFirst()) {
+            if (_cursor.isNull(0)) {
+              _result = null;
+            } else {
+              _result = _cursor.getString(0);
+            }
+          } else {
+            _result = null;
+          }
+          return _result;
+        } finally {
+          _cursor.close();
+        }
+      }
+
+      @Override
+      protected void finalize() {
+        _statement.release();
+      }
+    });
+  }
+
+  @Override
   public Object getAllIds(final Continuation<? super List<Long>> $completion) {
     final String _sql = "SELECT id FROM screenshots";
     final RoomSQLiteQuery _statement = RoomSQLiteQuery.acquire(_sql, 0);
@@ -946,10 +986,10 @@ public final class ScreenshotDao_Impl implements ScreenshotDao {
   public Flow<List<CollectionInfoEntity>> getCustomCollectionsFlow() {
     final String _sql = "\n"
             + "        SELECT collectionName as appName, COUNT(*) as count,\n"
-            + "        (SELECT imageUri FROM screenshots s2 INNER JOIN screenshot_custom_collection j2 ON s2.id = j2.screenshotId WHERE j2.collectionName = j.collectionName ORDER BY s2.dateTaken DESC LIMIT 1) as latestUri\n"
+            + "        (SELECT imageUri FROM screenshots s2 INNER JOIN screenshot_custom_collection j2 ON s2.id = j2.screenshotId WHERE j2.collectionName = j.collectionName ORDER BY s2.dateTaken DESC LIMIT 1) as latestUri,\n"
+            + "        (SELECT MAX(s3.dateTaken) FROM screenshots s3 INNER JOIN screenshot_custom_collection j3 ON s3.id = j3.screenshotId WHERE j3.collectionName = j.collectionName) as maxDate\n"
             + "        FROM screenshot_custom_collection j\n"
             + "        GROUP BY collectionName\n"
-            + "        ORDER BY count DESC, collectionName ASC\n"
             + "    ";
     final RoomSQLiteQuery _statement = RoomSQLiteQuery.acquire(_sql, 0);
     return CoroutinesRoom.createFlow(__db, false, new String[] {"screenshots",
@@ -962,6 +1002,7 @@ public final class ScreenshotDao_Impl implements ScreenshotDao {
           final int _cursorIndexOfAppName = 0;
           final int _cursorIndexOfCount = 1;
           final int _cursorIndexOfLatestUri = 2;
+          final int _cursorIndexOfMaxDate = 3;
           final List<CollectionInfoEntity> _result = new ArrayList<CollectionInfoEntity>(_cursor.getCount());
           while (_cursor.moveToNext()) {
             final CollectionInfoEntity _item;
@@ -975,7 +1016,13 @@ public final class ScreenshotDao_Impl implements ScreenshotDao {
             } else {
               _tmpLatestUri = _cursor.getString(_cursorIndexOfLatestUri);
             }
-            _item = new CollectionInfoEntity(_tmpAppName,_tmpCount,_tmpLatestUri);
+            final Long _tmpMaxDate;
+            if (_cursor.isNull(_cursorIndexOfMaxDate)) {
+              _tmpMaxDate = null;
+            } else {
+              _tmpMaxDate = _cursor.getLong(_cursorIndexOfMaxDate);
+            }
+            _item = new CollectionInfoEntity(_tmpAppName,_tmpCount,_tmpLatestUri,_tmpMaxDate);
             _result.add(_item);
           }
           return _result;

@@ -31,7 +31,7 @@ class ScreenshotRepository(
 
     fun getCollections(): Flow<List<CollectionInfo>> =
         screenshotDao.getCollectionsFlow().map { list ->
-            list.map { CollectionInfo(it.appName, it.count, it.latestUri) }
+            list.map { CollectionInfo(it.appName, it.count, it.latestUri, it.maxDate ?: 0L) }
         }
 
     suspend fun getScreenshotById(id: Long): Screenshot? = withContext(Dispatchers.IO) {
@@ -53,6 +53,7 @@ class ScreenshotRepository(
     fun getFavoritesCountFlow(): Flow<Int> = screenshotDao.getFavoritesCountFlow()
     fun getTotalSizeFlow(): Flow<Long> = screenshotDao.getTotalSizeFlow().map { it ?: 0L }
     fun getLatestFavoriteUriFlow(): Flow<String?> = screenshotDao.getLatestFavoriteUriFlow()
+    fun getLatestScreenshotUriFlow(): Flow<String?> = screenshotDao.getLatestScreenshotUriFlow()
 
     suspend fun syncScreenshots() = withContext(Dispatchers.IO) {
         val mediaStoreScreens = MediaStoreScanner.scanScreenshots(context)
@@ -81,7 +82,7 @@ class ScreenshotRepository(
 
     fun getCustomCollections(): Flow<List<CollectionInfo>> =
         screenshotDao.getCustomCollectionsFlow().map { list ->
-            list.map { CollectionInfo(it.appName, it.count, it.latestUri) }
+            list.map { CollectionInfo(it.appName, it.count, it.latestUri, it.maxDate ?: 0L) }
         }
 
     fun getScreenshotsByCustomCollection(collectionName: String): Flow<List<Screenshot>> =
@@ -122,5 +123,6 @@ class ScreenshotRepository(
 data class CollectionInfo(
     val appName: String,
     val count: Int,
-    val latestUri: String?
+    val latestUri: String?,
+    val latestDate: Long = 0L
 )

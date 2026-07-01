@@ -405,15 +405,6 @@ fun ZoomableImage(
     var scale by remember { mutableStateOf(1f) }
     var offset by remember { mutableStateOf(Offset.Zero) }
 
-    val state = rememberTransformableState { zoomChange, panChange, _ ->
-        scale = (scale * zoomChange).coerceIn(1f, 5f)
-        if (scale > 1f) {
-            offset += panChange
-        } else {
-            offset = Offset.Zero
-        }
-    }
-
     Box(
         modifier = modifier
             .fillMaxSize()
@@ -424,11 +415,27 @@ fun ZoomableImage(
                             scale = 1f
                             offset = Offset.Zero
                         } else {
-                            scale = 3f
+                            scale = 2.5f
                         }
                     }
                 )
             }
+            .then(
+                if (scale > 1f) {
+                    Modifier.pointerInput(Unit) {
+                        detectTransformGestures { _, pan, zoom, _ ->
+                            scale = (scale * zoom).coerceIn(1f, 5f)
+                            if (scale > 1f) {
+                                offset += pan
+                            } else {
+                                offset = Offset.Zero
+                            }
+                        }
+                    }
+                } else {
+                    Modifier
+                }
+            )
             .clipToBounds()
     ) {
         AsyncImage(
@@ -443,7 +450,6 @@ fun ZoomableImage(
                     translationX = offset.x,
                     translationY = offset.y
                 )
-                .transformable(state = state, enabled = scale > 1f)
         )
     }
 }
